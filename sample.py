@@ -40,25 +40,45 @@ def help_command(message):
                           '/help - список доступных команд\n')
 
 
-# Обработчик команды /hot
 @bot.message_handler(commands=['hot'])
 def hot_water(message):
     try:
         value = float(message.text.split()[1])
-        water_counters['hot'] = value
-        bot.reply_to(message, f'Показание счетчика горячей воды успешно записано: {value}')
+        user_id = message.from_user.id
+        with sqlite3.connect('water_readings.db') as conn:
+            cursor = conn.cursor()
+            apartment_id = get_registered_apartment_id(cursor, user_id)
+            if apartment_id:
+                cursor.execute("INSERT INTO water_readings (apartment_id, hot_water) VALUES (?, ?)", (apartment_id, value))
+                value = float(message.text.split()[1])
+                water_counters['hot'] = value
+                conn.commit()
+                bot.reply_to(message, f'Показание счетчика горячей воды успешно записано: {value}')
+            else:
+                bot.reply_to(message, 'Сначала зарегистрируйте квартиру с помощью команды /register')
     except (IndexError, ValueError):
         bot.reply_to(message, 'Используйте команду в формате: /hot <показание>')
 
-# Обработчик команды /cold
+
 @bot.message_handler(commands=['cold'])
 def cold_water(message):
     try:
         value = float(message.text.split()[1])
-        water_counters['cold'] = value
-        bot.reply_to(message, f'Показание счетчика холодной воды успешно записано: {value}')
+        user_id = message.from_user.id
+        with sqlite3.connect('water_readings.db') as conn:
+            cursor = conn.cursor()
+            apartment_id = get_registered_apartment_id(cursor, user_id)
+            if apartment_id:
+                cursor.execute("INSERT INTO water_readings (apartment_id, cold_water) VALUES (?, ?)", (apartment_id, value))
+                value = float(message.text.split()[1])
+                water_counters['cold'] = value
+                conn.commit()
+                bot.reply_to(message, f'Показание счетчика холодной воды успешно записано: {value}')
+            else:
+                bot.reply_to(message, 'Сначала зарегистрируйте квартиру с помощью команды /register')
     except (IndexError, ValueError):
         bot.reply_to(message, 'Используйте команду в формате: /cold <показание>')
+
 
 
 # Обработчик команды /status
