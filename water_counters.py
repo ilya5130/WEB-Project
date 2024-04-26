@@ -30,8 +30,8 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS water_readings
 def start(message):
     bot.reply_to(message, 'Привет!👋🏻 Я бот 🤖 для записи показаний счетчиков воды; '
                           'Отправь /help, ✏ чтобы увидеть доступные команды.')
-    with open('start.jpg', 'rb') as photo:
-        bot.send_photo(message.chat.id, photo)
+    '''with open('start.jpg', 'rb') as photo:
+        bot.send_photo(message.chat.id, photo)'''
 
 # Обработчик команды /help
 @bot.message_handler(commands=['help'])
