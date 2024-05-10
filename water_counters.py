@@ -1,6 +1,9 @@
 import logging
 import telebot
 import sqlite3
+import csv
+from io import StringIO
+
 
 # Включаем логирование для получения информации о возможных ошибках
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -25,13 +28,120 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS water_readings
                   (id INTEGER PRIMARY KEY, apartment_id INTEGER, hot_water INTEGER, cold_water INTEGER,
                    FOREIGN KEY(apartment_id) REFERENCES apartments(id))''')
 
+# Список ID администраторов
+admin_ids = [1680017325]
+
+# Функция для проверки, является ли пользователь администратором
+def is_admin(user_id):
+    return user_id in admin_ids
+
+# Обработчик команды /delete_user для администраторов
+@bot.message_handler(commands=['delete_user'])
+def delete_user(message):
+    user_id = message.from_user.id
+    if is_admin(user_id):
+        # Получаем ID пользователя для удаления
+        user_to_delete = message.text.split()[1] if len(message.text.split()) > 1 else ''
+        if user_to_delete:
+            try:
+                user_to_delete = int(user_to_delete)
+                with sqlite3.connect('water_readings.db') as conn:
+                    cursor = conn.cursor()
+                    # Удаляем пользователя из таблицы apartments
+                    cursor.execute("DELETE FROM apartments WHERE id=?", (user_to_delete,))
+                    conn.commit()
+                    bot.reply_to(message, f"Пользователь с ID {user_to_delete} удален из базы данных.")
+            except ValueError:
+                bot.reply_to(message, "Пожалуйста, укажите корректный ID пользователя.")
+            except sqlite3.Error as e:
+                bot.reply_to(message, f"Ошибка базы данных: {e}")
+        else:
+            bot.reply_to(message, "Пожалуйста, укажите ID пользователя для удаления.")
+    else:
+        bot.reply_to(message, "Извините, у вас нет прав для выполнения этой команды.")
+
+
+# Функция для создания CSV-файла с показаниями счетчиков
+def create_counters_report():
+    with sqlite3.connect('water_readings.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM water_readings")
+        readings = cursor.fetchall()
+
+        # Создаем файл в памяти
+        output = StringIO()
+        writer = csv.writer(output, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+        # Записываем заголовки столбцов
+        writer.writerow(['ID', 'Apartment ID', 'Hot Water', 'Cold Water'])
+
+        # Записываем данные
+        for row in readings:
+            writer.writerow(row)
+
+        # Перемещаем указатель в начало файла
+        output.seek(0)
+
+        return output
+
+# Обработчик команды /send_report для администраторов
+@bot.message_handler(commands=['send_report'])
+def send_report(message):
+    user_id = message.from_user.id
+    if is_admin(user_id):
+        report_file = create_counters_report()
+        bot.send_document(message.chat.id, ('water_counters_report.csv', report_file.getvalue()))
+        report_file.close()
+    else:
+        bot.reply_to(message, "Извините, у вас нет прав для выполнения этой команды.")
+
+# Обработчик команды /admin
+@bot.message_handler(commands=['admin'])
+def admin_panel(message):
+    user_id = message.from_user.id
+    if is_admin(user_id):
+        bot.reply_to(message, "Добро пожаловать в админ-панель! Вот доступные опции:\n"
+                              "/reset_counters - сбросить показания счетчиков\n"
+                              "/delete_user <ID пользователя> - удалить пользователя по его ID\n"
+                              "/send_report - для отправки отчета\n"
+                              "/get_users - получить список всех пользователей\n")
+    else:
+        bot.reply_to(message, "Извините, у вас нет доступа к админ-панели.")
+
+# Обработчик команды /reset_counters для администраторов
+@bot.message_handler(commands=['reset_counters'])
+def reset_counters(message):
+    user_id = message.from_user.id
+    if is_admin(user_id):
+        water_counters['hot'] = 0
+        water_counters['cold'] = 0
+        bot.reply_to(message, "Показания счетчиков успешно сброшены.")
+    else:
+        bot.reply_to(message, "Извините, у вас нет прав для выполнения этой команды.")
+
+# Обработчик команды /get_users для администраторов
+@bot.message_handler(commands=['get_users'])
+def get_users(message):
+    user_id = message.from_user.id
+    if is_admin(user_id):
+        with sqlite3.connect('water_readings.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM apartments")
+            users = cursor.fetchall()
+            reply_message = "Список всех пользователей и их квартир:\n"
+            for user in users:
+                reply_message += f"ID: {user[0]}, Номер квартиры: {user[1]}\n"
+            bot.reply_to(message, reply_message)
+    else:
+        bot.reply_to(message, "Извините, у вас нет прав для просмотра списка пользователей.")
+
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, 'Привет!👋🏻 Я бот 🤖 для записи показаний счетчиков воды; '
                           'Отправь /help, ✏ чтобы увидеть доступные команды.')
-    '''with open('start.jpg', 'rb') as photo:
-        bot.send_photo(message.chat.id, photo)'''
+    with open('start.jpg', 'rb') as photo:
+        bot.send_photo(message.chat.id, photo)
 
 # Обработчик команды /help
 @bot.message_handler(commands=['help'])
